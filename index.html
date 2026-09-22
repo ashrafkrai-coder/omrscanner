@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f5eff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>OMR Scanner</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --ink:#15181f; --mute:#5d6675; --line:#dfe3ec; --brand:#1f5eff; --ok:#12925a; --bad:#d6334a; --warn:#d98a00; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1218; --card:#1a1f29; --ink:#eef1f6; --mute:#9aa4b5; --line:#2c3444; --brand:#5b8aff; --ok:#3cc98a; --bad:#ff6b80; --warn:#f0b13a; } }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding-bottom:calc(64px + env(safe-area-inset-bottom)); }
+  header { padding:14px 16px 4px; max-width:720px; margin:0 auto; }
+  h1 { font-size:20px; margin:0; } h2 { font-size:16px; margin:0 0 8px; }
+  main { max-width:720px; margin:0 auto; padding:8px 16px 24px; }
+  section { display:none; } section.on { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin:10px 0; }
+  label { display:block; font-size:14px; color:var(--mute); margin:10px 0 4px; }
+  input[type=text], input[type=number], select, textarea { width:100%; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  textarea { font-family:ui-monospace,Consolas,monospace; min-height:90px; letter-spacing:1px; }
+  .row { display:flex; gap:10px; } .row > * { flex:1; }
+  button, .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; width:100%; font:inherit; font-weight:600; border:0; border-radius:12px; padding:14px 16px; background:var(--brand); color:#fff; cursor:pointer; text-align:center; }
+  button.sec, .btn.sec { background:transparent; color:var(--brand); border:1.5px solid var(--brand); }
+  button.danger { background:transparent; color:var(--bad); border:1.5px solid var(--bad); }
+  button:disabled { opacity:.5; }
+  .stack > * + * { margin-top:10px; }
+  .hint { font-size:13px; color:var(--mute); }
+  .msg { padding:10px 12px; border-radius:10px; font-size:14px; margin-top:10px; }
+  .msg.err { background:color-mix(in srgb,var(--bad) 14%,transparent); color:var(--bad); }
+  .msg.warn { background:color-mix(in srgb,var(--warn) 16%,transparent); color:var(--warn); }
+  .score { text-align:center; padding:8px 0; } .score b { font-size:44px; line-height:1; } .score span { color:var(--mute); }
+  canvas { width:100%; height:auto; border-radius:10px; border:1px solid var(--line); background:#fff; }
+  .chips { display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:6px; margin-top:8px; }
+  .chip { border:1px solid var(--line); border-radius:8px; padding:4px 6px; font-size:13px; display:flex; justify-content:space-between; }
+  .chip.ok { border-color:var(--ok); color:var(--ok); } .chip.wrong { border-color:var(--bad); color:var(--bad); }
+  .chip.blank,.chip.multi { border-color:var(--warn); color:var(--warn); } .chip.nokey { color:var(--mute); }
+  .rec { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 0; border-top:1px solid var(--line); }
+  .rec:first-child { border-top:0; } .rec small { color:var(--mute); display:block; }
+  .rec button { width:auto; padding:6px 10px; }
+  #sheetPreview svg { width:100%; height:auto; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+  nav button { background:none; color:var(--mute); border-radius:0; padding:12px 4px; font-size:13px; flex-direction:column; gap:2px; }
+  nav button.on { color:var(--brand); }
+  .pad { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; } .pad button { width:auto; min-width:52px; flex:1; padding:10px; font-size:20px; }
+  #printRoot { display:none; }
+  @media print {
+    @page { size:A4; margin:0; }
+    body > *:not(#printRoot) { display:none !important; }
+    #printRoot { display:block; } body { padding:0; background:#fff; }
+  }
+</style>
+</head>
+<body>
+<header><h1>OMR Scanner</h1><div class="hint" id="engine">Memuatkan enjin imbasan…</div></header>
+
+<main>
+  <!-- IMBAS -->
+  <section id="tab-scan" class="on">
+    <div class="card stack">
+      <div><label for="name">Nama pelajar (pilihan)</label><input type="text" id="name" placeholder="cth. Ali bin Abu"></div>
+      <label class="btn" id="camBtn" for="cam">📷 Ambil gambar borang</label>
+      <input type="file" id="cam" accept="image/*" capture="environment" hidden>
+      <label class="btn sec" for="gallery">🖼️ Pilih fail (JPEG / PDF)</label>
+      <input type="file" id="gallery" accept="image/*,application/pdf,.pdf" hidden>
+      <div class="hint">Letakkan borang di permukaan rata dengan cahaya cukup. Pastikan <b>keempat-empat kotak hitam sudut</b> kelihatan dan borang menegak.</div>
+      <div id="keyWarn"></div>
+    </div>
+    <div id="scanErr"></div>
+    <div id="result" hidden>
+      <div class="card">
+        <div class="score"><b id="scoreNum">0</b><span id="scoreOf"> / 0</span><div id="scorePct" class="hint"></div></div>
+        <div class="row"><button id="saveRec">Simpan rekod</button></div>
+        <label for="sens">Kepekaan tanda (<span id="sensVal"></span>)</label>
+        <input type="range" id="sens" min="0.15" max="0.6" step="0.05" value="0.3" style="width:100%">
+        <div class="hint">Turunkan jika tanda pensel yang samar tidak dikesan; naikkan jika calitan dikira sebagai jawapan.</div>
+      </div>
+      <div class="card"><h2>Semakan visual</h2>
+        <canvas id="view"></canvas>
+        <div class="hint">Hijau = betul · Merah = salah · Biru = jawapan sebenar · Jingga = pelbagai tanda</div>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KUNCI -->
+  <section id="tab-key">
+    <div class="card stack">
+      <h2>Kunci jawapan</h2>
+      <div><label for="keyText">Taip jawapan mengikut susunan soalan</label>
+      <textarea id="keyText" placeholder="ABCDABCDA…" spellcheck="false" autocapitalize="characters"></textarea>
+      <div id="keyPad" class="pad"></div>
+      <div class="hint" id="keyInfo"></div>
+      <div class="hint">Boleh guna huruf Rumi atau Jawi; hanya huruf pilihan dikira; ruang, koma dan nombor diabaikan. Guna <b>-</b> untuk soalan tiada kunci (dikecualikan dari markah).</div></div>
+      <label class="btn sec" for="keyScan">📷 Imbas borang guru dengan kamera</label>
+      <input type="file" id="keyScan" accept="image/*" capture="environment" hidden>
+      <label class="btn sec" for="keyFile">📁 Muat naik borang guru (JPEG / PNG / PDF)</label>
+      <input type="file" id="keyFile" accept="image/*,application/pdf,.pdf" hidden>
+      <div class="hint">Untuk PDF, halaman pertama sahaja dibaca.</div>
+      <div id="keyErr"></div>
+    </div>
+  </section>
+
+  <!-- BORANG -->
+  <section id="tab-sheet">
+    <div class="card stack">
+      <h2>Borang jawapan (60 soalan, 4 pilihan)</h2>
+      <div><label for="labels">Label pilihan</label><select id="labels"><option value="rumi">Rumi (A B C D)</option><option value="jawi">Jawi (ا ب ج د)</option></select></div>
+      <div><label for="title">Tajuk borang</label><input type="text" id="title" value="BORANG JAWAPAN"></div>
+      <button id="print">🖨️ Cetak / Simpan PDF</button>
+      <div class="hint">Cetak pada saiz sebenar (100%, tanpa "fit to page") di kertas A4. Untuk kepastian, cetak dari komputer.</div>
+      <div id="sheetPreview"></div>
+    </div>
+  </section>
+
+  <!-- REKOD -->
+  <section id="tab-rec">
+    <div class="card">
+      <h2>Rekod tersimpan</h2>
+      <div id="recList"></div>
+      <div class="stack" style="margin-top:12px">
+        <button id="csv" class="sec">⬇️ Eksport CSV (Excel)</button>
+        <button id="clear" class="danger">Padam semua rekod</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="scan" class="on">📷<span>Imbas</span></button>
+  <button data-tab="key">🔑<span>Kunci</span></button>
+  <button data-tab="sheet">📄<span>Borang</span></button>
+  <button data-tab="rec">📋<span>Rekod</span></button>
+</nav>
+<div id="printRoot"></div>
+
+<script src="omr.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
