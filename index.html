@@ -46,6 +46,12 @@
   nav button.on { color:var(--brand); }
   .pad { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; } .pad button { width:auto; min-width:52px; flex:1; padding:10px; font-size:20px; }
   #printRoot { display:none; }
+  #markedPrint { display:none; }
+  #markedPrint img { width:100%; height:auto; border:1px solid #ccc; }
+  @media print {
+    body.markedPrint > *:not(#markedPrint) { display:none !important; }
+    body.markedPrint #markedPrint { display:block; padding:10mm; }
+  }
   @media print {
     @page { size:A4; margin:0; }
     body > *:not(#printRoot) { display:none !important; }
@@ -72,7 +78,7 @@
     <div id="result" hidden>
       <div class="card">
         <div class="score"><b id="scoreNum">0</b><span id="scoreOf"> / 0</span><div id="scorePct" class="hint"></div></div>
-        <div class="row"><button id="saveRec">Simpan rekod</button></div>
+        <div class="row"><button id="saveRec">Simpan rekod</button><button id="printMarked" class="sec">🖨️ Cetak OMR bertanda merah</button></div>
         <label for="sens">Kepekaan tanda (<span id="sensVal"></span>)</label>
         <input type="range" id="sens" min="0.15" max="0.6" step="0.05" value="0.3" style="width:100%">
         <div class="hint">Turunkan jika tanda pensel yang samar tidak dikesan; naikkan jika calitan dikira sebagai jawapan.</div>
@@ -134,7 +140,7 @@
   <button data-tab="sheet">📄<span>Borang</span></button>
   <button data-tab="rec">📋<span>Rekod</span></button>
 </nav>
-<div id="printRoot"></div>
+<div id="printRoot"></div><div id="markedPrint"></div>
 
 <script src="omr.js"></script>
 <script src="app.js"></script>
