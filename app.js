@@ -218,20 +218,7 @@
     }).join('');
   }
 
-  $('printMarked').addEventListener('click', () => {
-    if (!lastScan || !lastScan.grade) return;
-    const img = $('view').toDataURL('image/png'), g = lastScan.grade;
-    $('markedPrint').innerHTML = `
-      <h1>OMR — Kertas Jawapan Disemak</h1>
-      <p><b>Nama:</b> ${escapeHtml($('name').value.trim() || 'Tanpa nama')} &nbsp; <b>Markah:</b> ${g.score}/${g.total} (${g.total ? Math.round(g.score / g.total * 100) : 0}%)</p>
-      <img src="${img}" alt="OMR bertanda">
-      <p>✓ merah = betul &nbsp; ✗ merah = salah / tanda berganda</p>`;
-    document.body.classList.add('markedPrint');
-    window.print();
-    setTimeout(() => document.body.classList.remove('markedPrint'), 500);
-  });
-
-  $('saveRec').addEventListener('click', () => {
+  $('printMarked').addEventListener('click', () => {\n    if (!lastScan || !lastScan.grade) return;\n    const g = lastScan.grade;\n    const marks = [];\n    g.detail.forEach((d, q) => {\n      if (d.k == null) return;\n      if (d.status === 'multi') {\n        lastScan.fills[q].forEach((fill, o) => { if (fill >= cfg.minFill) marks.push({ q, o, type: 'cross' }); });\n        marks.push({ q, o: d.k, type: 'check' });\n      } else if (d.a != null) {\n        marks.push({ q, o: d.a, type: d.status === 'ok' ? 'check' : 'cross' });\n        if (d.a !== d.k) marks.push({ q, o: d.k, type: 'check' });\n      } else {\n        marks.push({ q, o: d.k, type: 'check' });\n      }\n    });\n    const svg = OMR.sheetSVG(cfg.questions, cfg.choices, cfg.title, cfg.labels, marks);\n    const name = escapeHtml($('name').value.trim() || 'Tanpa nama');\n    const pct = g.total ? Math.round(g.score / g.total * 100) : 0;\n    $('markedPrint').innerHTML = `<div class="markedSheet">${svg}<div class="markedMeta"><span><b>Nama:</b> ${name}</span><span><b>Markah:</b> ${g.score}/${g.total} (${pct}%)</span></div><div class="markedLegend">✓ merah = betul / jawapan sebenar &nbsp;&nbsp; ✗ merah = salah / tanda berganda</div></div>`;\n    document.body.classList.add('markedPrint');\n    window.print();\n    setTimeout(() => document.body.classList.remove('markedPrint'), 500);\n  });\n\n  $('saveRec').addEventListener('click', () => {
     const g = lastScan.grade;
     records.unshift({
       id: Date.now(), name: $('name').value.trim() || 'Tanpa nama', date: new Date().toISOString(),
