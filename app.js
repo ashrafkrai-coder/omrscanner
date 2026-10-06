@@ -184,7 +184,6 @@
     for (let i = 0, n = warped.data.length; i < n; i++) { const v = warped.data[i]; id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; }
     ctx.putImageData(id, 0, 0);
     ctx.lineWidth = 4;
-    const ring = (b, color) => { const p = px(b); ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 3, 0, 7); ctx.stroke(); };
     const redMark = (b, type) => {
       const p = px(b);
       ctx.save(); ctx.strokeStyle = '#e00000'; ctx.fillStyle = '#e00000';
@@ -192,9 +191,19 @@
       ctx.fillText(type === 'check' ? '✓' : '✗', p.x, p.y); ctx.restore();
     };
     g.detail.forEach((d, q) => {
-      if (d.status === 'multi') lastScan.fills[q].forEach((f, o) => { if (f >= cfg.minFill) redMark(bubbles[q][o], 'cross'); });
-      else if (d.a != null) redMark(bubbles[q][d.a], d.status === 'ok' ? 'check' : 'cross');
-      if (d.k != null && d.a !== d.k) redMark(bubbles[q][d.k], 'check');
+      // Never call an answer wrong when no digital key exists for that question.
+      // Red marks are reserved for actual grading against a known key.
+      if (d.k == null) return;
+      if (d.status === 'multi') {
+        lastScan.fills[q].forEach((f, o) => { if (f >= cfg.minFill) redMark(bubbles[q][o], 'cross'); });
+        redMark(bubbles[q][d.k], 'check');
+      } else if (d.a != null) {
+        redMark(bubbles[q][d.a], d.status === 'ok' ? 'check' : 'cross');
+        if (d.a !== d.k) redMark(bubbles[q][d.k], 'check');
+      } else {
+        // Blank answer: show the correct key location only.
+        redMark(bubbles[q][d.k], 'check');
+      }
     });
     lastScan.review = g.detail.map((d, q) => {
       const c = lastScan.confidence?.[q];

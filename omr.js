@@ -157,6 +157,69 @@
       const fd = flat.data, W = flat.cols;
       const R = SHEET.bubbleR * PX_PER_MM;
 
+      // Perspective correction fixes camera angle, but a printed/photocopied
+      // form can still have a slightly different row pitch from the current
+      // SVG template. Detect the real bubble-row centres after warping.
+      let rowCenters = null;
+      let bubbleCentersX = null;
+      try {
+        const circles = track(new cv.Mat());
+        cv.HoughCircles(flat, circles, cv.HOUGH_GRADIENT, 1.2, 22, 80, 18, 8, 17);
+        const raw = [];
+        const d = circles.data32F;
+        for (let i = 0; i < circles.cols; i++) {
+          const x = d[i * 3], y = d[i * 3 + 1], r = d[i * 3 + 2];
+          if (x > W * 0.16 && x < W * 0.82 && y > 350 && y < WARP_H - 120 && r >= 8 && r <= 17) raw.push({ x, y });
+        }
+        raw.sort((a, b) => a.y - b.y);
+        const groups = [];
+        for (const p of raw) {
+          let g = groups[groups.length - 1];
+          if (!g || Math.abs(p.y - g.mean) > 5) groups.push({ ys: [p.y], mean: p.y, count: 1 });
+          else { g.ys.push(p.y); g.mean = g.ys.reduce((s, v) => s + v, 0) / g.ys.length; g.count++; }
+        }
+        const nRows = Math.ceil(opts.questions / Math.ceil(opts.questions / SHEET.maxPerCol));
+        const strong = groups.filter(g => g.count >= Math.max(8, opts.choices * 2));
+        if (strong.length >= nRows) {
+          const expected = Array.from({ length: nRows }, (_, i) =>
+            (SHEET.y0 - ORIGIN[1]) * PX_PER_MM + i * SHEET.rowPitch * PX_PER_MM
+          );
+          const selected = strong.slice().sort((a, b) => {
+            const da = Math.min(...expected.map(y => Math.abs(a.mean - y)));
+            const db = Math.min(...expected.map(y => Math.abs(b.mean - y)));
+            return da - db;
+          }).slice(0, nRows).sort((a, b) => a.mean - b.mean);
+          if (selected.length === nRows) rowCenters = selected.map(g => g.mean);
+        }
+
+        // Also calibrate the 12 bubble columns (4 choices × 3 blocks).
+        // This compensates for small residual horizontal scaling/warping.
+        const xGroups = [];
+        raw.slice().sort((a, b) => a.x - b.x).forEach(p => {
+          let g = xGroups[xGroups.length - 1];
+          if (!g || Math.abs(p.x - g.mean) > 5) xGroups.push({ xs: [p.x], mean: p.x, count: 1 });
+          else { g.xs.push(p.x); g.mean = g.xs.reduce((s, v) => s + v, 0) / g.xs.length; g.count++; }
+        });
+        const xStrong = xGroups.filter(g => g.count >= Math.max(10, nRows / 2));
+        const nCols = Math.ceil(opts.questions / nRows) * opts.choices;
+        const expectedX = [];
+        for (let b = 0; b < Math.ceil(opts.questions / nRows); b++) {
+          const bx = SHEET.w / 2 - (Math.ceil(opts.questions / nRows) * SHEET.blockPitch) / 2 + b * SHEET.blockPitch;
+          for (let o = 0; o < opts.choices; o++) expectedX.push((bx + SHEET.firstOptOffset + o * SHEET.optPitch - ORIGIN[0]) * PX_PER_MM);
+        }
+        if (xStrong.length >= nCols) {
+          const xs = xStrong.slice().sort((a, b) => {
+            const da = Math.min(...expectedX.map(x => Math.abs(a.mean - x)));
+            const db = Math.min(...expectedX.map(x => Math.abs(b.mean - x)));
+            return da - db;
+          }).slice(0, nCols).sort((a, b) => a.mean - b.mean);
+          if (xs.length === nCols) bubbleCentersX = xs.map(g => g.mean);
+        }
+        circles.delete();
+      } catch (_) {
+        // Fall back to template geometry if circle detection is unavailable.
+      }
+
       function zoneDensity(cx, cy, radius) {
         let dark = 0, n = 0;
         const r2 = radius * radius;
@@ -171,8 +234,12 @@
         return n ? dark / n : 0;
       }
 
-      const fills = L.bubbles.map((row) => row.map((b) => {
-        const cx = (b.x - ORIGIN[0]) * PX_PER_MM, cy = (b.y - ORIGIN[1]) * PX_PER_MM;
+      const fills = L.bubbles.map((row, q) => row.map((b) => {
+        const block = Math.floor(q / L.perCol);
+        const option = row.indexOf(b);
+        const cx = bubbleCentersX ? bubbleCentersX[block * opts.choices + option] : (b.x - ORIGIN[0]) * PX_PER_MM;
+        const rowInBlock = q % L.perCol;
+        const cy = rowCenters ? rowCenters[rowInBlock] : (b.y - ORIGIN[1]) * PX_PER_MM;
         const inner = zoneDensity(cx, cy, R * 0.45);
         const middle = zoneDensity(cx, cy, R * 0.70);
         const broad = zoneDensity(cx, cy, R * 0.88);
