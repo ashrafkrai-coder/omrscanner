@@ -72,7 +72,7 @@
     const bubFont = jawi ? 4.2 : 3.6;
     for (const row of L.bubbles) row.forEach((b, o) => {
       s += `<circle cx="${f(b.x)}" cy="${f(b.y)}" r="${SHEET.bubbleR}" fill="none" stroke="#000" stroke-width="0.3"/>`;
-      s += `<text x="${f(b.x)}" y="${f(b.y + bubFont * 0.35)}" text-anchor="middle" font-size="${bubFont}" fill="#aaa">${lab[o]}</text>`;
+      // Option letters are intentionally NOT printed inside bubbles; they can look like student marks.
     });
     return s + '</svg>';
   }
@@ -154,20 +154,35 @@
       cv.divide(warped, bg, flat, 255, -1);
 
       const L = layout(opts.questions, opts.choices);
-      const rIn = SHEET.bubbleR * PX_PER_MM * 0.6;
       const fd = flat.data, W = flat.cols;
-      const fills = L.bubbles.map((row) => row.map((b) => {
-        const cx = (b.x - ORIGIN[0]) * PX_PER_MM, cy = (b.y - ORIGIN[1]) * PX_PER_MM;
+      const R = SHEET.bubbleR * PX_PER_MM;
+
+      function zoneDensity(cx, cy, radius) {
         let dark = 0, n = 0;
-        for (let y = Math.floor(cy - rIn); y <= Math.ceil(cy + rIn); y++) {
-          for (let x = Math.floor(cx - rIn); x <= Math.ceil(cx + rIn); x++) {
-            if ((x - cx) ** 2 + (y - cy) ** 2 > rIn * rIn || x < 0 || y < 0 || x >= W || y >= flat.rows) continue;
+        const r2 = radius * radius;
+        for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+          for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
+            const dx = x - cx, dy = y - cy;
+            if (dx * dx + dy * dy > r2 || x < 0 || y < 0 || x >= W || y >= flat.rows) continue;
             n++;
             if (fd[y * W + x] < opts.darkLevel) dark++;
           }
         }
         return n ? dark / n : 0;
+      }
+
+      const fills = L.bubbles.map((row) => row.map((b) => {
+        const cx = (b.x - ORIGIN[0]) * PX_PER_MM, cy = (b.y - ORIGIN[1]) * PX_PER_MM;
+        const inner = zoneDensity(cx, cy, R * 0.45);
+        const middle = zoneDensity(cx, cy, R * 0.70);
+        const broad = zoneDensity(cx, cy, R * 0.88);
+        return 0.55 * inner + 0.30 * middle + 0.15 * broad;
       }));
+
+      const confidence = fills.map((row) => {
+        const sorted = row.slice().sort((a, b) => b - a);
+        return { top: sorted[0] || 0, second: sorted[1] || 0, margin: (sorted[0] || 0) - (sorted[1] || 0) };
+      });
 
       // answers[q]: option index, null = blank, -1 = more than one mark
       const answers = fills.map((row) => {
@@ -180,6 +195,7 @@
       return {
         ok: true, answers, fills, quad: found.quad,
         warped: { data: new Uint8Array(warped.data), width: warped.cols, height: warped.rows },
+        confidence,
         px: (b) => ({ x: (b.x - ORIGIN[0]) * PX_PER_MM, y: (b.y - ORIGIN[1]) * PX_PER_MM, r: SHEET.bubbleR * PX_PER_MM }),
         bubbles: L.bubbles,
       };
