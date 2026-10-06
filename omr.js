@@ -161,6 +161,7 @@
       // form can still have a slightly different row pitch from the current
       // SVG template. Detect the real bubble-row centres after warping.
       let rowCenters = null;
+      let bubbleCentersX = null;
       try {
         const circles = track(new cv.Mat());
         cv.HoughCircles(flat, circles, cv.HOUGH_GRADIENT, 1.2, 22, 80, 18, 8, 17);
@@ -190,6 +191,30 @@
           }).slice(0, nRows).sort((a, b) => a.mean - b.mean);
           if (selected.length === nRows) rowCenters = selected.map(g => g.mean);
         }
+
+        // Also calibrate the 12 bubble columns (4 choices × 3 blocks).
+        // This compensates for small residual horizontal scaling/warping.
+        const xGroups = [];
+        raw.slice().sort((a, b) => a.x - b.x).forEach(p => {
+          let g = xGroups[xGroups.length - 1];
+          if (!g || Math.abs(p.x - g.mean) > 5) xGroups.push({ xs: [p.x], mean: p.x, count: 1 });
+          else { g.xs.push(p.x); g.mean = g.xs.reduce((s, v) => s + v, 0) / g.xs.length; g.count++; }
+        });
+        const xStrong = xGroups.filter(g => g.count >= Math.max(10, nRows / 2));
+        const nCols = Math.ceil(opts.questions / nRows) * opts.choices;
+        const expectedX = [];
+        for (let b = 0; b < Math.ceil(opts.questions / nRows); b++) {
+          const bx = SHEET.w / 2 - (Math.ceil(opts.questions / nRows) * SHEET.blockPitch) / 2 + b * SHEET.blockPitch;
+          for (let o = 0; o < opts.choices; o++) expectedX.push((bx + SHEET.firstOptOffset + o * SHEET.optPitch - ORIGIN[0]) * PX_PER_MM);
+        }
+        if (xStrong.length >= nCols) {
+          const xs = xStrong.slice().sort((a, b) => {
+            const da = Math.min(...expectedX.map(x => Math.abs(a.mean - x)));
+            const db = Math.min(...expectedX.map(x => Math.abs(b.mean - x)));
+            return da - db;
+          }).slice(0, nCols).sort((a, b) => a.mean - b.mean);
+          if (xs.length === nCols) bubbleCentersX = xs.map(g => g.mean);
+        }
         circles.delete();
       } catch (_) {
         // Fall back to template geometry if circle detection is unavailable.
@@ -210,7 +235,9 @@
       }
 
       const fills = L.bubbles.map((row, q) => row.map((b) => {
-        const cx = (b.x - ORIGIN[0]) * PX_PER_MM;
+        const block = Math.floor(q / L.perCol);
+        const option = row.indexOf(b);
+        const cx = bubbleCentersX ? bubbleCentersX[block * opts.choices + option] : (b.x - ORIGIN[0]) * PX_PER_MM;
         const rowInBlock = q % L.perCol;
         const cy = rowCenters ? rowCenters[rowInBlock] : (b.y - ORIGIN[1]) * PX_PER_MM;
         const inner = zoneDensity(cx, cy, R * 0.45);
