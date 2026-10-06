@@ -41,7 +41,7 @@
     return { bubbles, labels, headers, perCol, blocks };
   }
 
-  function sheetSVG(questions, choices, titleText, labelSet) {
+  function sheetSVG(questions, choices, titleText, labelSet, marks = []) {
     const lab = LABELS[labelSet] || LABELS.rumi;
     const L = layout(questions, choices);
     const f = (n) => Math.round(n * 100) / 100;
@@ -74,7 +74,7 @@
       s += `<circle cx="${f(b.x)}" cy="${f(b.y)}" r="${SHEET.bubbleR}" fill="none" stroke="#000" stroke-width="0.3"/>`;
       // Option letters are intentionally NOT printed inside bubbles; they can look like student marks.
     });
-    return s + '</svg>';
+    // Optional marking layer: vector marks use the exact OMR bubble coordinates.\n    if (Array.isArray(marks)) {\n      for (const mark of marks) {\n        const q = Number(mark?.q), o = Number(mark?.o);\n        if (!Number.isInteger(q) || !Number.isInteger(o)) continue;\n        const b = L.bubbles[q]?.[o];\n        if (!b) continue;\n        const glyph = mark.type === 'cross' ? '✗' : '✓';\n        const size = mark.type === 'cross' ? 5.2 : 5.6;\n        s += `<text x="${f(b.x)}" y="${f(b.y + 1.7)}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold" fill="#e00000">${glyph}</text>`;\n      }\n    }\n    return s + '</svg>';
   }
 
   function esc(t) { return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
