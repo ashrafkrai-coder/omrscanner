@@ -185,18 +185,42 @@
     ctx.putImageData(id, 0, 0);
     ctx.lineWidth = 4;
     const ring = (b, color) => { const p = px(b); ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 3, 0, 7); ctx.stroke(); };
+    const redMark = (b, type) => {
+      const p = px(b);
+      ctx.save(); ctx.strokeStyle = '#e00000'; ctx.fillStyle = '#e00000';
+      ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(type === 'check' ? '✓' : '✗', p.x, p.y); ctx.restore();
+    };
     g.detail.forEach((d, q) => {
-      if (d.status === 'multi') lastScan.fills[q].forEach((f, o) => { if (f >= cfg.minFill) ring(bubbles[q][o], '#e59400'); });
-      else if (d.a != null) ring(bubbles[q][d.a], d.status === 'wrong' ? '#d6334a' : d.status === 'ok' ? '#12925a' : '#e59400');
-      if (d.k != null && d.a !== d.k) ring(bubbles[q][d.k], '#1f5eff');
+      if (d.status === 'multi') lastScan.fills[q].forEach((f, o) => { if (f >= cfg.minFill) redMark(bubbles[q][o], 'cross'); });
+      else if (d.a != null) redMark(bubbles[q][d.a], d.status === 'ok' ? 'check' : 'cross');
+      if (d.k != null && d.a !== d.k) redMark(bubbles[q][d.k], 'check');
+    });
+    lastScan.review = g.detail.map((d, q) => {
+      const c = lastScan.confidence?.[q];
+      return !!(c && d.a != null && d.a !== -1 && c.top >= cfg.minFill && c.margin < 0.08);
     });
 
     $('chips').innerHTML = g.detail.map((d, q) => {
       const a = d.a == null ? '–' : d.a === -1 ? '??' : L(d.a);
       const mark = d.status === 'ok' ? '✓' : d.status === 'nokey' ? '' : d.k != null ? '(' + L(d.k) + ')' : '';
-      return `<div class="chip ${d.status}"><span>${q + 1}</span><span>${a} ${mark}</span></div>`;
+      const uncertain = lastScan.review?.[q] ? ' ⚠' : '';
+      return `<div class="chip ${d.status}"><span>${q + 1}</span><span>${a} ${mark}${uncertain}</span></div>`;
     }).join('');
   }
+
+  $('printMarked').addEventListener('click', () => {
+    if (!lastScan || !lastScan.grade) return;
+    const img = $('view').toDataURL('image/png'), g = lastScan.grade;
+    $('markedPrint').innerHTML = `
+      <h1>OMR — Kertas Jawapan Disemak</h1>
+      <p><b>Nama:</b> ${escapeHtml($('name').value.trim() || 'Tanpa nama')} &nbsp; <b>Markah:</b> ${g.score}/${g.total} (${g.total ? Math.round(g.score / g.total * 100) : 0}%)</p>
+      <img src="${img}" alt="OMR bertanda">
+      <p>✓ merah = betul &nbsp; ✗ merah = salah / tanda berganda</p>`;
+    document.body.classList.add('markedPrint');
+    window.print();
+    setTimeout(() => document.body.classList.remove('markedPrint'), 500);
+  });
 
   $('saveRec').addEventListener('click', () => {
     const g = lastScan.grade;
